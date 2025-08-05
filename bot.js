@@ -1,7 +1,11 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
-const { OpenAI } = require('openai');
-const http = require('http');
-require('dotenv').config();
+import { config } from 'dotenv';
+import { Client, GatewayIntentBits, EmbedBuilder } from 'discord.js';
+import OpenAI from 'openai';
+import http from 'http';
+import { getApiBaseUrl } from './utils.js';
+import chalk from 'chalk';
+
+config();
 
 // Initialize Discord client
 const client = new Client({
@@ -13,15 +17,26 @@ const client = new Client({
     ]
 });
 
-// Initialize Shapes.inc API client
-const shapesClient = new OpenAI({
-    apiKey: process.env.SHAPESINC_API_KEY,
-    baseURL: "https://api.shapes.inc/v1/",
-});
+// Initialize Shapes client with official utilities
+let shapesClient;
+let shapeUsername = process.env.SHAPESINC_SHAPE_USERNAME || 'shaperobot';
+let shapeAppId = process.env.SHAPESINC_APP_ID || 'f6263f80-2242-428d-acd4-10e1feec44ee';
+
+// Initialize the Shapes client with auto-discovery
+async function initializeShapesClient() {
+    const apiUrl = await getApiBaseUrl();
+    console.log(chalk.magenta('→ Shapes API URL:'), apiUrl);
+    console.log(chalk.magenta('→ Shape Username:'), shapeUsername);
+    console.log(chalk.magenta('→ App ID:'), shapeAppId);
+    
+    shapesClient = new OpenAI({
+        apiKey: process.env.SHAPESINC_API_KEY,
+        baseURL: apiUrl,
+    });
+}
 
 // Bot configuration
-const config = {
-    shapeUsername: process.env.SHAPESINC_SHAPE_USERNAME,
+const botConfig = {
     prefix: '!', // Command prefix
     maxMessageLength: 2000, // Discord message limit
     keepAlive: process.env.KEEP_ALIVE === 'true' || process.env.NODE_ENV === 'production'
@@ -36,7 +51,7 @@ function getContextKey(message) {
 }
 
 // Helper function to split long messages
-function splitMessage(text, maxLength = config.maxMessageLength) {
+function splitMessage(text, maxLength = botConfig.maxMessageLength) {
     if (text.length <= maxLength) return [text];
     
     const messages = [];
@@ -71,47 +86,15 @@ function splitMessage(text, maxLength = config.maxMessageLength) {
 }
 
 // Function to interact with Shapes.inc API
-async function getShapeResponse(message, userMessage) {
-    try {
-        const contextKey = getContextKey(message);
-        const userId = `discord_user_${message.author.id}`;
-        const channelId = `discord_channel_${contextKey}`;
-        
-        // Create a new client instance with custom headers for this request
-        const shapesClientWithHeaders = new OpenAI({
-            apiKey: process.env.SHAPESINC_API_KEY,
-            baseURL: "https://api.shapes.inc/v1/",
-            defaultHeaders: {
-                'X-User-Id': userId,
-                'X-Channel-Id': channelId
-            }
-        });
-        
-        const response = await shapesClientWithHeaders.chat.completions.create({
-            model: `shapesinc/${config.shapeUsername}`,
-            messages: [
-                { role: "user", content: userMessage }
-            ]
-        });
-        
-        return response.choices[0].message.content;
-    } catch (error) {
-        console.error('Error calling Shapes API:', error);
-        
-        if (error.status === 401) {
-            return 'Authentication error. Please check the API key configuration.';
-        } else if (error.status === 429) {
-            return 'Rate limit exceeded. Please try again later.';
-        } else {
-            return 'Sorry, I encountered an error while processing your message. Please try again.';
-        }
-    }
-}
+
 
 // Bot ready event
-client.once('ready', () => {
-    console.log(`✅ Bot is ready! Logged in as ${client.user.tag}`);
-    console.log(`🤖 Using shape: ${config.shapeUsername}`);
+client.once('ready', async () => {
+    console.log(chalk.green(`✅ Bot is ready! Logged in as ${client.user.tag}`));
+    console.log(chalk.green(`🤖 Using shape: ${shapeUsername}`));
+    
+    // Initialize Shapes client
+    await initializeShapesClient();
     
     // Set bot status
     client.user.setActivity('Roleplay with Shapes.inc', { type: 'PLAYING' });
@@ -123,30 +106,29 @@ client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     
     // Handle commands
-    if (message.content.startsWith(config.prefix)) {
-        const args = message.content.slice(config.prefix.length).trim().split(/ +/);
+    if (message.content.startsWith(botConfig.prefix)) {
+        const args = message.content.slice(botConfig.prefix.length).trim().split(/ +/);
         const command = args.shift().toLowerCase();
         
         switch (command) {
             case 'help':
-                const helpEmbed = new EmbedBuilder()
-                    .setColor(0x0099FF)
-                    .setTitle('🎭 Roleplay Bot Commands')
-                    .setDescription('Commands for interacting with your Shapes.inc character')
-                    .addFields(
-                        { name: '💬 Chat', value: 'Mention the bot (@bot) or DM to chat with the character', inline: false },
-                        { name: '🔄 !reset', value: 'Reset the character\'s long-term memory', inline: true },
-                        { name: '😴 !sleep', value: 'Generate long-term memory on demand', inline: true },
-                        { name: '📊 !dashboard', value: 'Access the character\'s dashboard', inline: true },
-                        { name: 'ℹ️ !info', value: 'Get information about the character', inline: true },
-                        { name: '🌐 !web', value: 'Search the web (e.g., !web cats)', inline: true },
-                        { name: '🎨 !imagine', value: 'Generate images (e.g., !imagine sunset)', inline: true },
-                        { name: '🧠 !wack', value: 'Reset short-term memory', inline: true },
-                        { name: '❓ !help', value: 'Show this help message', inline: true }
-                    )
-                    .setFooter({ text: 'Powered by Shapes.inc API' });
+                const headers = {
+                    'X-User-Id': message.author.id,
+                    'X-Channel-Id': message.channel.id,
+                };
                 
-                await message.reply({ embeds: [helpEmbed] });
+                const helpResponse = await shapesClient.chat.completions.create({
+                    model: `shapesinc/${shapeUsername}`,
+                    messages: [{ role: 'user', content: `!${command}` }],
+                    headers: headers,
+                });
+                
+                const commandResponse = helpResponse.choices[0]?.message?.content || 'Help command failed.';
+                const helpMessages = splitMessage(commandResponse);
+                
+                for (const msg of helpMessages) {
+                    await message.reply(msg);
+                }
                 break;
                 
             case 'reset':
@@ -155,7 +137,18 @@ client.on('messageCreate', async (message) => {
             case 'info':
             case 'wack':
                 // Pass command directly to Shapes API
-                const commandResponse = await getShapeResponse(message, `!${command}`);
+                const cmdHeaders = {
+                    'X-User-Id': message.author.id,
+                    'X-Channel-Id': message.channel.id,
+                };
+                
+                const cmdResponse = await shapesClient.chat.completions.create({
+                    model: `shapesinc/${shapeUsername}`,
+                    messages: [{ role: 'user', content: `!${command}` }],
+                    headers: cmdHeaders,
+                });
+                
+                const commandResponse = cmdResponse.choices[0]?.message?.content || 'Command failed.';
                 const commandMessages = splitMessage(commandResponse);
                 
                 for (const msg of commandMessages) {
@@ -169,7 +162,18 @@ client.on('messageCreate', async (message) => {
                     return;
                 }
                 const webQuery = args.join(' ');
-                const webResponse = await getShapeResponse(message, `!web ${webQuery}`);
+                const webHeaders = {
+                    'X-User-Id': message.author.id,
+                    'X-Channel-Id': message.channel.id,
+                };
+                
+                const webApiResponse = await shapesClient.chat.completions.create({
+                    model: `shapesinc/${shapeUsername}`,
+                    messages: [{ role: 'user', content: `!web ${webQuery}` }],
+                    headers: webHeaders,
+                });
+                
+                const webResponse = webApiResponse.choices[0]?.message?.content || 'Web search failed.';
                 const webMessages = splitMessage(webResponse);
                 
                 for (const msg of webMessages) {
@@ -183,7 +187,18 @@ client.on('messageCreate', async (message) => {
                     return;
                 }
                 const imagePrompt = args.join(' ');
-                const imageResponse = await getShapeResponse(message, `!imagine ${imagePrompt}`);
+                const imageHeaders = {
+                    'X-User-Id': message.author.id,
+                    'X-Channel-Id': message.channel.id,
+                };
+                
+                const imageApiResponse = await shapesClient.chat.completions.create({
+                    model: `shapesinc/${shapeUsername}`,
+                    messages: [{ role: 'user', content: `!imagine ${imagePrompt}` }],
+                    headers: imageHeaders,
+                });
+                
+                const imageResponse = imageApiResponse.choices[0]?.message?.content || 'Image generation failed.';
                 const imageMessages = splitMessage(imageResponse);
                 
                 for (const msg of imageMessages) {
@@ -218,11 +233,27 @@ client.on('messageCreate', async (message) => {
             cleanContent = message.content.replace(/<@!?\d+>/g, '').trim();
         }
         
-        // Get response from Shapes API
-        const response = await getShapeResponse(message, cleanContent);
+        // Set up headers for user identification and conversation context
+        const headers = {
+            'X-User-Id': message.author.id, // Discord user ID for user identification
+            'X-Channel-Id': message.channel.id, // Discord channel ID for conversation context
+        };
+
+        const response = await shapesClient.chat.completions.create({
+            model: `shapesinc/${shapeUsername}`,
+            messages: [
+                {
+                    role: 'user',
+                    content: cleanContent
+                }
+            ],
+            headers: headers,
+        });
+
+        const aiResponse = response.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
         
         // Split long responses and send
-        const messages = splitMessage(response);
+        const messages = splitMessage(aiResponse);
         
         for (let i = 0; i < messages.length; i++) {
             if (i === 0) {
