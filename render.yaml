@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: discord-shapes-bot
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: SHAPESINC_API_KEY
+        sync: false
+      - key: SHAPESINC_SHAPE_USERNAME
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: KEEP_ALIVE
+        value: true
+      - key: RENDER_EXTERNAL_URL
+        fromService:
+          type: web
+          name: discord-shapes-bot
+          property: host
+    autoDeploy: true
+    branch: main
