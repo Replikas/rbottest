@@ -148,8 +148,8 @@ client.on('messageCreate', async (message) => {
                     headers: cmdHeaders,
                 });
                 
-                const commandResponse = cmdResponse.choices[0]?.message?.content || 'Command failed.';
-                const commandMessages = splitMessage(commandResponse);
+                const cmdResponseContent = cmdResponse.choices[0]?.message?.content || 'Command failed.';
+                const commandMessages = splitMessage(cmdResponseContent);
                 
                 for (const msg of commandMessages) {
                     await message.reply(msg);
