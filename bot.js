@@ -198,6 +198,15 @@ client.on('messageCreate', async (message) => {
         return;
     }
     
+    // Check if bot is mentioned or if it's a DM
+    const isMentioned = message.mentions.has(client.user);
+    const isDM = message.channel.type === 'DM';
+    
+    // Only respond to mentions or DMs
+    if (!isMentioned && !isDM) {
+        return;
+    }
+    
     // Handle regular chat messages
     try {
         // Show typing indicator
