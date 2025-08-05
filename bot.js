@@ -77,15 +77,21 @@ async function getShapeResponse(message, userMessage) {
         const userId = `discord_user_${message.author.id}`;
         const channelId = `discord_channel_${contextKey}`;
         
-        const response = await shapesClient.chat.completions.create({
-            model: `shapesinc/${config.shapeUsername}`,
-            messages: [
-                { role: "user", content: userMessage }
-            ],
-            headers: {
+        // Create a new client instance with custom headers for this request
+        const shapesClientWithHeaders = new OpenAI({
+            apiKey: process.env.SHAPESINC_API_KEY,
+            baseURL: "https://api.shapes.inc/v1/",
+            defaultHeaders: {
                 'X-User-Id': userId,
                 'X-Channel-Id': channelId
             }
+        });
+        
+        const response = await shapesClientWithHeaders.chat.completions.create({
+            model: `shapesinc/${config.shapeUsername}`,
+            messages: [
+                { role: "user", content: userMessage }
+            ]
         });
         
         return response.choices[0].message.content;
