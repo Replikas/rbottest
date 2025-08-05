@@ -134,7 +134,7 @@ client.on('messageCreate', async (message) => {
                     .setTitle('🎭 Roleplay Bot Commands')
                     .setDescription('Commands for interacting with your Shapes.inc character')
                     .addFields(
-                        { name: '💬 Chat', value: 'Just type a message to chat with the character', inline: false },
+                        { name: '💬 Chat', value: 'Mention the bot (@bot) or DM to chat with the character', inline: false },
                         { name: '🔄 !reset', value: 'Reset the character\'s long-term memory', inline: true },
                         { name: '😴 !sleep', value: 'Generate long-term memory on demand', inline: true },
                         { name: '📊 !dashboard', value: 'Access the character\'s dashboard', inline: true },
@@ -203,8 +203,14 @@ client.on('messageCreate', async (message) => {
         // Show typing indicator
         await message.channel.sendTyping();
         
+        // Clean message content (remove bot mention if present)
+        let cleanContent = message.content;
+        if (isMentioned) {
+            cleanContent = message.content.replace(/<@!?\d+>/g, '').trim();
+        }
+        
         // Get response from Shapes API
-        const response = await getShapeResponse(message, message.content);
+        const response = await getShapeResponse(message, cleanContent);
         
         // Split long responses and send
         const messages = splitMessage(response);
